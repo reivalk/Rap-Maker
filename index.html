@@ -1,4 +1,52 @@
-<script>
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>自訂節拍與饒舌產生器</title>
+  <!-- 載入 Tailwind CSS 樣式套件 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- 載入 Lucide 圖示套件 -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body { background-color: #0f172a; color: white; font-family: sans-serif; }
+    .active { border-color: #14b8a6 !important; background-color: rgba(20, 184, 166, 0.2) !important; }
+    .playing { background-color: #10b981; box-shadow: 0 0 10px #10b981; }
+    .beat-card { padding: 1rem; border-radius: 0.5rem; border: 1px solid rgba(204, 251, 241, 0.15); background-color: rgba(0, 0, 0, 0.2); }
+    .field { width: 100%; padding: 0.5rem; border-radius: 0.25rem; background: #1e293b; color: white; border: 1px solid #334155; }
+  </style>
+</head>
+<body class="p-4 md:p-8">
+  <div class="max-w-4xl mx-auto space-y-6">
+    <h1 class="text-3xl font-bold text-center text-teal-400 mb-6">自訂節拍與饒舌產生器</h1>
+
+    <!-- 控制面板 -->
+    <div class="bg-gray-800 p-4 rounded-xl flex flex-wrap gap-4 items-center justify-between shadow-lg">
+      <div class="flex items-center gap-3">
+        <button id="play-button" class="bg-teal-600 hover:bg-teal-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"><i data-lucide="play" class="w-5 h-5"></i> 實時播放</button>
+        <button id="stop-button" class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"><i data-lucide="square" class="w-5 h-5"></i> 停止</button>
+        <button id="export-button" class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"><i data-lucide="download" class="w-5 h-5"></i> 匯出 WAV</button>
+      </div>
+      <input type="text" id="song-title" placeholder="請輸入歌曲名稱 (匯出檔名)" class="field !w-auto min-w-[200px]">
+    </div>
+
+    <!-- 狀態面板 -->
+    <div class="bg-gray-800 p-4 rounded-xl flex items-center gap-4 shadow-lg">
+      <div id="status-dot" class="w-4 h-4 rounded-full bg-gray-500 transition-colors"></div>
+      <div id="play-status" class="font-bold text-teal-300">READY / 等待開始</div>
+      <div id="active-line" class="text-gray-400 text-sm">第一句 · 第 1 拍</div>
+      <div id="active-lyric" class="text-white ml-auto font-mono text-lg font-bold">READY?</div>
+    </div>
+
+    <!-- 節拍參考區 (動態生成) -->
+    <div class="grid grid-cols-2 md:grid-cols-7 gap-2" id="guide-list"></div>
+
+    <!-- 歌詞編輯區 (動態生成) -->
+    <div class="space-y-4" id="lines-list"></div>
+  </div>
+
+  <!-- JavaScript 核心程式碼 -->
+  <script>
     const rhythms=[
       ["quarter","一拍","●"],
       ["eighth","兩個半拍","● ●"],
@@ -12,15 +60,15 @@
 
     function cardsMarkup(line){
       return Array.from({length:4},(_,i)=>`<div class="beat-card" data-card>
-        <div class="flex justify-between mb-2"><span class="beat-num">${i+1}</span><span class="text-[10px] text-teal-100/45">BEAT</span></div>
-        <div class="mini-notation mb-2"><span data-symbol>●</span></div>
-        <label class="sr-only" for="r${line}-${i}">節奏</label><select id="r${line}-${i}" class="field rhythm">${rhythms.map(r=>`<option value="${r[0]}">${r[1]}</option>`).join("")}</select>
-        <label class="sr-only" for="t${line}-${i}">歌詞</label><input id="t${line}-${i}" class="field lyric mt-2" type="text" placeholder="歌詞">
+        <div class="flex justify-between mb-2"><span class="font-bold text-teal-300">${i+1}</span><span class="text-[10px] text-teal-100/45">BEAT</span></div>
+        <div class="mb-2 text-center text-xl tracking-widest text-teal-200"><span data-symbol>●</span></div>
+        <label class="sr-only" for="r${line}-${i}">節奏</label><select id="r${line}-${i}" class="field rhythm mb-2 text-sm">${rhythms.map(r=>`<option value="${r[0]}">${r[1]}</option>`).join("")}</select>
+        <label class="sr-only" for="t${line}-${i}">歌詞</label><input id="t${line}-${i}" class="field lyric" type="text" placeholder="輸入歌詞">
       </div>`).join("");
     }
     function build(){
-      document.getElementById("guide-list").innerHTML=rhythms.map(r=>`<div class="rounded-xl border border-teal-100/15 bg-black/15 p-2"><div class="guide-note"><span class="absolute left-1/2 top-1 -translate-x-1/2 text-[#09232d] mono text-xs">${r[2]}</span></div><p class="mt-2 text-center text-[10px] text-teal-50/80">${r[1]}</p></div>`).join("");
-      document.getElementById("lines-list").innerHTML=["第一句","第二句","第三句","第四句"].map((name,i)=>`<section class="rounded-2xl border border-teal-100/15 bg-black/15 p-4"><div class="flex justify-between mb-3"><h3 class="font-bold">${name}</h3><span class="text-xs text-teal-100/55">完成四拍</span></div><div class="beat-grid grid grid-cols-4 gap-3">${cardsMarkup(i)}</div></section>`).join("");
+      document.getElementById("guide-list").innerHTML=rhythms.map(r=>`<div class="rounded-xl border border-teal-100/15 bg-gray-800 p-2"><div class="text-center text-teal-300 text-sm font-mono tracking-widest">${r[2]}</div><p class="mt-2 text-center text-[10px] text-teal-100">${r[1]}</p></div>`).join("");
+      document.getElementById("lines-list").innerHTML=["第一句","第二句","第三句","第四句"].map((name,i)=>`<section class="rounded-2xl border border-teal-100/15 bg-gray-800 p-4 shadow-lg"><div class="flex justify-between mb-3"><h3 class="font-bold text-lg text-teal-400">${name}</h3><span class="text-xs text-teal-100/55">完成四拍</span></div><div class="grid grid-cols-1 md:grid-cols-4 gap-3">${cardsMarkup(i)}</div></section>`).join("");
       document.querySelectorAll(".rhythm").forEach(s=>s.addEventListener("change",()=>s.closest("[data-card]").querySelector("[data-symbol]").textContent=rhythms.find(r=>r[0]===s.value)[2]));
     }
     function stop(){
@@ -42,20 +90,10 @@
     }
     function beat(audio,time,dest){const o=audio.createOscillator(),g=audio.createGain();o.frequency.setValueAtTime(130,time);o.frequency.exponentialRampToValueAtTime(48,time+.13);g.gain.setValueAtTime(.2,time);g.gain.exponentialRampToValueAtTime(.001,time+.14);o.connect(g);g.connect(dest);o.start(time);o.stop(time+.15)}
 
-    // ★ TTS 語音模擬器與真實 API 預留接口 ★
+    // TTS 模擬與串接接口
     const ttsCache = {};
     async function getTTSBuffer(audioCtx, text) {
       if(ttsCache[text]) return ttsCache[text];
-
-      // 【若要串接真實 TTS，請在這裡呼叫您的 API】
-      // 例如:
-      // const response = await fetch("YOUR_TTS_API_ENDPOINT", { method: 'POST', body: JSON.stringify({text}) });
-      // const arrayBuffer = await response.arrayBuffer();
-      // const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-      // ttsCache[text] = audioBuffer;
-      // return audioBuffer;
-
-      // 在還沒串接前，先用模擬電子短促音代替人聲，方便您測試 WAV 合成
       const dur = 0.15;
       const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
       const data = buf.getChannelData(0);
@@ -66,7 +104,7 @@
       return buf;
     }
 
-    // ★ 將 AudioBuffer 轉換為標準 WAV 檔案 (純原生 JS) ★
+    // 將 AudioBuffer 轉換為標準 WAV 檔案
     function audioBufferToWav(buffer) {
         let numChannels = 1;
         let sampleRate = buffer.sampleRate;
@@ -110,9 +148,9 @@
       
       const bpm=88, dur=60/bpm;
 
-      // ★ 匯出模式 (使用 OfflineAudioContext 進行純淨且瞬間的高品質無損渲染) ★
+      // 匯出模式
       if(exporting) {
-          stage(true, "GENERATING / 正在合成高音質 WAV...", "匯出中", "請稍候...");
+          stage(true, "GENERATING / 正在合成 WAV...", "匯出中", "請稍候...");
           const totalDur = all.length * dur + 1.0;
           const offlineCtx = new OfflineAudioContext(1, totalDur * 44100, 44100);
 
@@ -133,7 +171,6 @@
               if (lyric !== "—") {
                   const syllables = [...lyric.replace(/\s+/g, "")];
                   for (let charIndex = 0; charIndex < syllables.length; charIndex++) {
-                      // 【修正：讓超過預設節點數的多餘字元，疊加在該拍的最後一個節點上，完美對齊節奏模型】
                       const ratio = pattern[charIndex] !== undefined ? pattern[charIndex] : (pattern[pattern.length-1] || 0);
                       const ttsWhen = when + ratio * dur;
 
@@ -159,7 +196,7 @@
           return;
       }
 
-      // ★ 實時預覽播放模式 ★
+      // 實時預覽模式
       ctx=new AC();
       await ctx.resume();
       playing=true;
@@ -172,7 +209,7 @@
             if(!playing)return;
             document.querySelectorAll("[data-card]").forEach(x=>x.classList.remove("active"));
             card.classList.add("active");
-            stage(true,"LIVE / API人聲播放中",`第${["一","二","三","四"][line-1]}句 · 第 ${beatNo} 拍`,lyric);
+            stage(true,"LIVE / 播放中",`第${["一","二","三","四"][line-1]}句 · 第 ${beatNo} 拍`,lyric);
         }, Math.max(0,(when-ctx.currentTime)*1000)));
 
         beat(ctx,when,ctx.destination);
@@ -186,7 +223,6 @@
         if (lyric !== "—") {
             const syllables = [...lyric.replace(/\s+/g, "")];
             syllables.forEach(async (syllable, charIndex) => {
-                // 【同上修正：實時播放時也確保完美對齊節奏模型】
                 const ratio = pattern[charIndex] !== undefined ? pattern[charIndex] : (pattern[pattern.length-1] || 0);
                 const ttsWhen = when + ratio * dur;
                 
@@ -217,3 +253,5 @@
         lucide.createIcons();
     });
   </script>
+</body>
+</html>
