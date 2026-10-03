@@ -24,10 +24,16 @@
     <div class="bg-gray-800 p-4 rounded-xl flex flex-wrap gap-4 items-center justify-between shadow-lg">
       <div class="flex items-center gap-3">
         <button id="play-button" class="bg-teal-600 hover:bg-teal-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"><i data-lucide="play" class="w-5 h-5"></i> 實時播放 (含人聲)</button>
-        <button id="download-button" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"><i data-lucide="download" class="w-5 h-5"></i> 下載音檔</button>
+        <button id="download-button" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"><i data-lucide="download" class="w-5 h-5"></i> 下載節拍檔</button>
         <button id="stop-button" class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"><i data-lucide="square" class="w-5 h-5"></i> 停止</button>
       </div>
-      <div class="text-sm text-teal-200">※ 提示：下載音檔僅包含樂器節拍聲，實時播放時才有人聲。</div>
+
+      <!-- 人聲延遲校正微調器 -->
+      <div class="flex items-center gap-2 bg-gray-900/60 px-3 py-1.5 rounded-lg border border-teal-500/30">
+        <label for="offset-range" class="text-xs text-teal-300 font-bold whitespace-nowrap">人聲對位校正:</label>
+        <input id="offset-range" type="range" min="50" max="350" value="180" class="w-24 accent-teal-400">
+        <span id="offset-val" class="text-xs font-mono text-teal-200 w-12">180ms</span>
+      </div>
     </div>
 
     <!-- 狀態面板 -->
@@ -56,7 +62,7 @@
       ["offbeat", "後半拍", "images/img_7.png"]
     ];
     
-    // 定義每種節奏允許的最大字數
+    // 嚴格字數限制設定
     const rhythmWordLimits = {
         "quarter": 1, "eighth": 2, "triplet": 3, "sixteenth": 4,
         "long-short-short": 3, "short-short-long": 3, "offbeat": 1
@@ -65,6 +71,7 @@
     let ctx, timers = [], playing = false;
     let mediaRecorder = null;
     let recordedChunks = [];
+    let voiceOffsetMs = 180; // 人聲預先觸發毫秒數
 
     function cardsMarkup(line){
       return Array.from({length:4},(_,i)=>`<div class="beat-card" data-card>
@@ -115,6 +122,12 @@
           });
           updateInputLimit(s);
       });
+
+      const offsetInput = document.getElementById("offset-range");
+      offsetInput.addEventListener("input", (e) => {
+          voiceOffsetMs = parseInt(e.target.value);
+          document.getElementById("offset-val").textContent = voiceOffsetMs + "ms";
+      });
     }
 
     function stop(){
@@ -140,6 +153,20 @@
             quarter: [0], eighth: [0, 0.5], triplet: [0, 1/3, 2/3], sixteenth: [0, 0.25, 0.5, 0.75], 
             "long-short-short": [0, 0.5, 0.75], "short-short-long": [0, 0.25, 0.5], offbeat: [0.5]
         })[type] || [0];
+    }
+
+    // 依節奏類型提供最適合的發音語速（防止語音唸太長拖拍）
+    function getSpeechRate(type) {
+        switch(type) {
+            case 'quarter': return 1.2;
+            case 'eighth': return 1.6;
+            case 'triplet': return 1.9;
+            case 'sixteenth': return 2.4;
+            case 'long-short-short': return 1.8;
+            case 'short-short-long': return 1.8;
+            case 'offbeat': return 1.4;
+            default: return 1.3;
+        }
     }
     
     function tone(audio, time, freq, duration, voice, dest){
@@ -169,12 +196,11 @@
       
       stop(); 
       
-      // 語音引擎暖機，減少首次發聲的延遲
-      if ('speechSynthesis' in window) {
-          const warmup = new SpeechSynthesisUtterance('');
-          warmup.volume = 0;
-          window.speechSynthesis.speak(warmup);
-      }
+      // 清空語音佇列並預熱引擎
+      window.speechSynthesis.cancel();
+      const warmup = new SpeechSynthesisUtterance(' ');
+      warmup.volume = 0;
+      window.speechSynthesis.speak(warmup);
 
       const AC = window.AudioContext || window.webkitAudioContext;
       if(!AC) return;
@@ -183,7 +209,6 @@
       const masterGain = ctx.createGain();
       masterGain.connect(ctx.destination);
 
-      // 下載音檔錄音設定
       if (isRecording) {
           const streamDest = ctx.createMediaStreamDestination();
           masterGain.connect(streamDest);
@@ -205,16 +230,17 @@
       await ctx.resume();
       playing = true;
       const bpm = 75, dur = 60/bpm;
-      const start = ctx.currentTime + 0.2; 
+      const start = ctx.currentTime + 0.4; // 預留 0.4 秒供 TTS 啟動
       
       all.forEach((card, index) => {
         const type = card.querySelector(".rhythm").value;
         const lyric = card.querySelector(".lyric").value.trim();
-        const when = start + index * dur;
+        const when = start + index * dur; // 樂器目標發聲時間點 (AudioContext 時間)
         const line = Math.floor(index/4) + 1;
         const beatNo = index % 4 + 1;
         const pattern = ratios(type);
         
+        // 畫面高亮計時器
         timers.push(setTimeout(() => {
             if(!playing) return;
             document.querySelectorAll("[data-card]").forEach(x => x.classList.remove("active"));
@@ -222,6 +248,7 @@
             stage(true, isRecording ? "RECORDING / 錄音中" : "LIVE / 播放中", `第${["一","二","三","四"][line-1]}句 · 第 ${beatNo} 拍`, lyric || "—");
         }, Math.max(0, (when - ctx.currentTime) * 1000)));
 
+        // 樂器節拍發聲 (100% 精準零延遲)
         beat(ctx, when, masterGain);
         pattern.forEach((ratio, p) => {
             const next = pattern[p+1] ?? 1;
@@ -229,28 +256,32 @@
             tone(ctx, when + ratio * dur, 235 + p*28, noteDuration, "bright", masterGain);
         });
 
-        // 內建 TTS 語音播放 (僅在非錄音模式下開啟)
+        // 人聲對位發聲 (使用負延遲預先發送指令)
         if (lyric && !isRecording) {
             const syllables = [...lyric.replace(/\s+/g, "")];
             const maxLen = rhythmWordLimits[type];
+            const speechRate = getSpeechRate(type);
             
             for(let i = 0; i < Math.min(syllables.length, maxLen); i++) {
                 const char = syllables[i];
                 const ratio = pattern[i];
-                const ttsWhen = (when + ratio * dur - ctx.currentTime) * 1000;
+                const targetTimeSec = when + ratio * dur; // 目標聽覺響起時間
+                
+                // 計算需要提前發送 TTS 指令的時間毫秒數
+                const triggerDelayMs = (targetTimeSec - ctx.currentTime) * 1000 - voiceOffsetMs;
                 
                 timers.push(setTimeout(() => {
                     if(!playing) return;
                     const msg = new SpeechSynthesisUtterance(char);
                     msg.lang = 'zh-TW';
-                    msg.rate = 1.3;
+                    msg.rate = speechRate;
                     window.speechSynthesis.speak(msg);
-                }, Math.max(0, ttsWhen)));
+                }, Math.max(0, triggerDelayMs)));
             }
         }
       });
       
-      const end = (all.length * dur + 0.5) * 1000;
+      const end = (all.length * dur + 0.6) * 1000;
       timers.push(setTimeout(() => {
           playing = false;
           document.querySelectorAll("[data-card]").forEach(x => x.classList.remove("active"));
