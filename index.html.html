@@ -1,0 +1,219 @@
+<script>
+    const rhythms=[
+      ["quarter","一拍","●"],
+      ["eighth","兩個半拍","● ●"],
+      ["triplet","三連音","● ● ●"],
+      ["sixteenth","四個1/4拍","●●●●"],
+      ["long-short-short","長短短","● — · ·"],
+      ["short-short-long","短短長","· · — ●"],
+      ["offbeat","後半拍"," ●"]
+    ];
+    let ctx, timers=[], playing=false;
+
+    function cardsMarkup(line){
+      return Array.from({length:4},(_,i)=>`<div class="beat-card" data-card>
+        <div class="flex justify-between mb-2"><span class="beat-num">${i+1}</span><span class="text-[10px] text-teal-100/45">BEAT</span></div>
+        <div class="mini-notation mb-2"><span data-symbol>●</span></div>
+        <label class="sr-only" for="r${line}-${i}">節奏</label><select id="r${line}-${i}" class="field rhythm">${rhythms.map(r=>`<option value="${r[0]}">${r[1]}</option>`).join("")}</select>
+        <label class="sr-only" for="t${line}-${i}">歌詞</label><input id="t${line}-${i}" class="field lyric mt-2" type="text" placeholder="歌詞">
+      </div>`).join("");
+    }
+    function build(){
+      document.getElementById("guide-list").innerHTML=rhythms.map(r=>`<div class="rounded-xl border border-teal-100/15 bg-black/15 p-2"><div class="guide-note"><span class="absolute left-1/2 top-1 -translate-x-1/2 text-[#09232d] mono text-xs">${r[2]}</span></div><p class="mt-2 text-center text-[10px] text-teal-50/80">${r[1]}</p></div>`).join("");
+      document.getElementById("lines-list").innerHTML=["第一句","第二句","第三句","第四句"].map((name,i)=>`<section class="rounded-2xl border border-teal-100/15 bg-black/15 p-4"><div class="flex justify-between mb-3"><h3 class="font-bold">${name}</h3><span class="text-xs text-teal-100/55">完成四拍</span></div><div class="beat-grid grid grid-cols-4 gap-3">${cardsMarkup(i)}</div></section>`).join("");
+      document.querySelectorAll(".rhythm").forEach(s=>s.addEventListener("change",()=>s.closest("[data-card]").querySelector("[data-symbol]").textContent=rhythms.find(r=>r[0]===s.value)[2]));
+    }
+    function stop(){
+      playing=false; timers.forEach(clearTimeout); timers=[];
+      document.querySelectorAll("[data-card]").forEach(c=>c.classList.remove("active"));
+      if(ctx){ctx.close().catch(()=>{});ctx=null}
+      stage(false,"READY / 等待開始","第一句 · 第 1 拍","READY?");
+    }
+    function stage(on,status,line,lyric){document.getElementById("status-dot").classList.toggle("playing",on);document.getElementById("play-status").textContent=status;document.getElementById("active-line").textContent=line;document.getElementById("active-lyric").textContent=lyric}
+    function ratios(type){return({quarter:[0],eighth:[0,.5],triplet:[0,1/3,2/3],sixteenth:[0,.25,.5,.75],"long-short-short":[0,.5,.75],"short-short-long":[0,.25,.5],offbeat:[.5]})[type]||[0]}
+    
+    // 合成樂器節拍聲
+    function tone(audio,time,freq,duration,voice,dest){
+      const osc=audio.createOscillator(), gain=audio.createGain(), filter=audio.createBiquadFilter();
+      osc.type=voice==="low"?"triangle":"sawtooth"; osc.frequency.setValueAtTime(freq,time);osc.frequency.exponentialRampToValueAtTime(freq*.96,time+duration);
+      filter.type="bandpass";filter.frequency.value=voice==="low"?750:1250;filter.Q.value=2;
+      gain.gain.setValueAtTime(.0001,time);gain.gain.exponentialRampToValueAtTime(.12,time+.025);gain.gain.exponentialRampToValueAtTime(.0001,time+duration);
+      osc.connect(filter);filter.connect(gain);gain.connect(dest);osc.start(time);osc.stop(time+duration+.04);
+    }
+    function beat(audio,time,dest){const o=audio.createOscillator(),g=audio.createGain();o.frequency.setValueAtTime(130,time);o.frequency.exponentialRampToValueAtTime(48,time+.13);g.gain.setValueAtTime(.2,time);g.gain.exponentialRampToValueAtTime(.001,time+.14);o.connect(g);g.connect(dest);o.start(time);o.stop(time+.15)}
+
+    // ★ TTS 語音模擬器與真實 API 預留接口 ★
+    const ttsCache = {};
+    async function getTTSBuffer(audioCtx, text) {
+      if(ttsCache[text]) return ttsCache[text];
+
+      // 【若要串接真實 TTS，請在這裡呼叫您的 API】
+      // 例如:
+      // const response = await fetch("YOUR_TTS_API_ENDPOINT", { method: 'POST', body: JSON.stringify({text}) });
+      // const arrayBuffer = await response.arrayBuffer();
+      // const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      // ttsCache[text] = audioBuffer;
+      // return audioBuffer;
+
+      // 在還沒串接前，先用模擬電子短促音代替人聲，方便您測試 WAV 合成
+      const dur = 0.15;
+      const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * dur, audioCtx.sampleRate);
+      const data = buf.getChannelData(0);
+      for(let i=0; i<data.length; i++){
+          data[i] = Math.sin(i * 500 * Math.PI * 2 / audioCtx.sampleRate) * Math.exp(-6 * i / data.length) * 0.4;
+      }
+      ttsCache[text] = buf;
+      return buf;
+    }
+
+    // ★ 將 AudioBuffer 轉換為標準 WAV 檔案 (純原生 JS) ★
+    function audioBufferToWav(buffer) {
+        let numChannels = 1;
+        let sampleRate = buffer.sampleRate;
+        let result = new Float32Array(buffer.length);
+        buffer.copyFromChannel(result, 0);
+
+        let dataLength = result.length * 2;
+        let buffer2 = new ArrayBuffer(44 + dataLength);
+        let view = new DataView(buffer2);
+
+        const writeString = (view, offset, string) => { for (let i = 0; i < string.length; i++) { view.setUint8(offset + i, string.charCodeAt(i)); }};
+        writeString(view, 0, 'RIFF');
+        view.setUint32(4, 36 + dataLength, true);
+        writeString(view, 8, 'WAVE');
+        writeString(view, 12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true); // PCM
+        view.setUint16(22, numChannels, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * numChannels * 2, true);
+        view.setUint16(32, numChannels * 2, true);
+        view.setUint16(34, 16, true); // bitDepth
+        writeString(view, 36, 'data');
+        view.setUint32(40, dataLength, true);
+
+        let offset = 44;
+        for (let i = 0; i < result.length; i++, offset += 2) {
+            let s = Math.max(-1, Math.min(1, result[i]));
+            view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+        }
+        return buffer2;
+    }
+
+    async function perform(exporting=false){
+      const all=[...document.querySelectorAll("[data-card]")], has=all.some(c=>c.querySelector(".lyric").value.trim());
+      if(!has){stage(false,"請先填入歌詞","第一句 · 第 1 拍","先寫一拍歌詞");document.querySelector(".lyric").focus();return}
+      
+      stop(); 
+      const AC=window.AudioContext||window.webkitAudioContext;
+      if(!AC)return;
+      
+      const bpm=88, dur=60/bpm;
+
+      // ★ 匯出模式 (使用 OfflineAudioContext 進行純淨且瞬間的高品質無損渲染) ★
+      if(exporting) {
+          stage(true, "GENERATING / 正在合成高音質 WAV...", "匯出中", "請稍候...");
+          const totalDur = all.length * dur + 1.0;
+          const offlineCtx = new OfflineAudioContext(1, totalDur * 44100, 44100);
+
+          for (let index = 0; index < all.length; index++) {
+              const card = all[index];
+              const type = card.querySelector(".rhythm").value;
+              const lyric = card.querySelector(".lyric").value.trim() || "—";
+              const when = index * dur;
+
+              beat(offlineCtx, when, offlineCtx.destination);
+              const pattern = ratios(type);
+              pattern.forEach((r, p) => {
+                  const next = pattern[p+1] ?? 1;
+                  const noteDuration = Math.max(0.08, (next-r)*dur*0.75);
+                  tone(offlineCtx, when + r*dur, 235 + p*28, noteDuration, "bright", offlineCtx.destination);
+              });
+
+              if (lyric !== "—") {
+                  const syllables = [...lyric.replace(/\s+/g, "")];
+                  for (let charIndex = 0; charIndex < syllables.length; charIndex++) {
+                      // 【修正：讓超過預設節點數的多餘字元，疊加在該拍的最後一個節點上，完美對齊節奏模型】
+                      const ratio = pattern[charIndex] !== undefined ? pattern[charIndex] : (pattern[pattern.length-1] || 0);
+                      const ttsWhen = when + ratio * dur;
+
+                      const ttsBuf = await getTTSBuffer(offlineCtx, syllables[charIndex]);
+                      const src = offlineCtx.createBufferSource();
+                      src.buffer = ttsBuf;
+                      src.connect(offlineCtx.destination);
+                      src.start(ttsWhen);
+                  }
+              }
+          }
+
+          const renderedBuffer = await offlineCtx.startRendering();
+          const wavData = audioBufferToWav(renderedBuffer);
+          const blob = new Blob([wavData], { type: "audio/wav" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = (document.getElementById("song-title").value.trim() || "rap-creation") + ".wav";
+          a.click();
+          URL.revokeObjectURL(url);
+          stage(false, "DONE / WAV 匯出成功", "完成", "檔案已下載");
+          return;
+      }
+
+      // ★ 實時預覽播放模式 ★
+      ctx=new AC();
+      await ctx.resume();
+      playing=true;
+      const start=ctx.currentTime + 0.1;
+      
+      all.forEach((card,index)=>{
+        const type=card.querySelector(".rhythm").value, lyric=card.querySelector(".lyric").value.trim()||"—", when=start+index*dur, line=Math.floor(index/4)+1, beatNo=index%4+1;
+        
+        timers.push(setTimeout(()=>{
+            if(!playing)return;
+            document.querySelectorAll("[data-card]").forEach(x=>x.classList.remove("active"));
+            card.classList.add("active");
+            stage(true,"LIVE / API人聲播放中",`第${["一","二","三","四"][line-1]}句 · 第 ${beatNo} 拍`,lyric);
+        }, Math.max(0,(when-ctx.currentTime)*1000)));
+
+        beat(ctx,when,ctx.destination);
+        const pattern=ratios(type);
+        pattern.forEach((ratio,p)=>{
+            const next=pattern[p+1]??1;
+            const noteDuration=Math.max(.08,(next-ratio)*dur*.75);
+            tone(ctx,when+ratio*dur,235+p*28,noteDuration,"bright",ctx.destination);
+        });
+
+        if (lyric !== "—") {
+            const syllables = [...lyric.replace(/\s+/g, "")];
+            syllables.forEach(async (syllable, charIndex) => {
+                // 【同上修正：實時播放時也確保完美對齊節奏模型】
+                const ratio = pattern[charIndex] !== undefined ? pattern[charIndex] : (pattern[pattern.length-1] || 0);
+                const ttsWhen = when + ratio * dur;
+                
+                const ttsBuf = await getTTSBuffer(ctx, syllable);
+                if(!playing) return;
+                const src = ctx.createBufferSource();
+                src.buffer = ttsBuf;
+                src.connect(ctx.destination);
+                src.start(ttsWhen);
+            });
+        }
+      });
+      
+      const end=(all.length*dur+.35)*1000;
+      timers.push(setTimeout(()=>{
+          playing=false;
+          document.querySelectorAll("[data-card]").forEach(x=>x.classList.remove("active"));
+          stage(false,"DONE / 節拍結束","完成","MIC DROP");
+          if(ctx){ctx.close().catch(()=>{});ctx=null}
+      },end));
+    }
+    
+    document.addEventListener("DOMContentLoaded",()=>{
+        build();
+        document.getElementById("play-button").onclick=()=>perform(false);
+        document.getElementById("stop-button").onclick=stop;
+        document.getElementById("export-button").onclick=()=>perform(true);
+        lucide.createIcons();
+    });
+  </script>
