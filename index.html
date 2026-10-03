@@ -42,12 +42,17 @@
       </div>
     </div>
 
-    <!-- 狀態面板 -->
+    <!-- 狀態面板（更新：支援同步顯示節奏圖片） -->
     <div class="bg-gray-800 p-4 rounded-xl flex items-center gap-4 shadow-lg">
       <div id="status-dot" class="w-4 h-4 rounded-full bg-gray-500 transition-colors"></div>
       <div id="play-status" class="font-bold text-teal-300">READY / 等待開始</div>
       <div id="active-line" class="text-gray-400 text-sm">第一句 · 第 1 拍</div>
-      <div id="active-lyric" class="text-white ml-auto font-mono text-lg font-bold">READY?</div>
+      
+      <!-- 動態節奏圖片與歌詞 -->
+      <div class="ml-auto flex items-center gap-3">
+        <img id="active-img" class="h-8 w-auto object-contain filter invert hidden" alt="當前節奏">
+        <div id="active-lyric" class="text-white font-mono text-lg font-bold">READY?</div>
+      </div>
     </div>
 
     <!-- 節拍參考區 -->
@@ -157,17 +162,24 @@
       if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
       document.querySelectorAll("[data-card]").forEach(c => c.classList.remove("active"));
       if (ctx) { ctx.close().catch(()=>{}); ctx = null; }
-      stage(false, "READY / 等待開始", "第一句 · 第 1 拍", "READY?");
+      stage(false, "READY / 等待開始", "第一句 · 第 1 拍", "READY?", null);
     }
 
-    function stage(on, status, line, lyric){
+    function stage(on, status, line, lyric, imgSrc = null){
       document.getElementById("status-dot").classList.toggle("playing", on);
       document.getElementById("play-status").textContent = status;
       document.getElementById("active-line").textContent = line;
       document.getElementById("active-lyric").textContent = lyric;
+
+      const imgEl = document.getElementById("active-img");
+      if (on && imgSrc) {
+        imgEl.src = imgSrc;
+        imgEl.classList.remove("hidden");
+      } else {
+        imgEl.classList.add("hidden");
+      }
     }
 
-    // 精準細分拍比例
     function ratios(type){
       return ({
         quarter: [0],
@@ -180,32 +192,56 @@
       })[type] || [0];
     }
 
-    // 依節奏與字位提供動態語速控制（解決長短短、三連音對位）
     function getSyllableRates(type, length) {
-      if (type === 'long-short-short') return [1.2, 2.2, 2.2]; // 長、短、短
-      if (type === 'short-short-long') return [2.2, 2.2, 1.2]; // 短、短、長
-      if (type === 'triplet') return [1.8, 1.8, 1.8];           // 三連音均勻加速
-      if (type === 'sixteenth') return [2.3, 2.3, 2.3, 2.3];    // 1/4拍快速發音
+      if (type === 'long-short-short') return [1.2, 2.2, 2.2];
+      if (type === 'short-short-long') return [2.2, 2.2, 1.2];
+      if (type === 'triplet') return [1.8, 1.8, 1.8];
+      if (type === 'sixteenth') return [2.3, 2.3, 2.3, 2.3];
       if (type === 'eighth') return [1.5, 1.5];
       return Array(length).fill(1.3);
     }
 
+    // 響亮清晰的細分節拍聲
     function tone(audio, time, freq, duration, voice, dest){
       const osc = audio.createOscillator(), gain = audio.createGain(), filter = audio.createBiquadFilter();
-      osc.type = voice === "low" ? "triangle" : "sawtooth";
-      osc.frequency.setValueAtTime(freq, time);
-      osc.frequency.exponentialRampToValueAtTime(freq*.96, time+duration);
-      filter.type = "bandpass"; filter.frequency.value = voice === "low" ? 750 : 1250; filter.Q.value = 2;
-      gain.gain.setValueAtTime(.0001, time); gain.gain.exponentialRampToValueAtTime(.15, time+.025); gain.gain.exponentialRampToValueAtTime(.0001, time+duration);
+      osc.type = "square"; // 方波：讓高頻更清晰突出
+      osc.frequency.setValueAtTime(freq * 1.2, time);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.9, time + duration);
+
+      filter.type = "highshelf";
+      filter.frequency.value = 1000;
+      filter.gain.value = 6; // 增加高頻清晰度
+
+      gain.gain.setValueAtTime(0.001, time);
+      gain.gain.exponentialRampToValueAtTime(0.4, time + 0.015); // 音量提升至 0.4
+      gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+
       osc.connect(filter); filter.connect(gain); gain.connect(dest);
-      osc.start(time); osc.stop(time+duration+.04);
+      osc.start(time); osc.stop(time + duration + 0.05);
     }
 
+    // 重響且扎實的主節拍聲 (Kick + High Click)
     function beat(audio, time, dest){
+      // 重打低音鼓
       const o = audio.createOscillator(), g = audio.createGain();
-      o.frequency.setValueAtTime(130, time); o.frequency.exponentialRampToValueAtTime(48, time+.13);
-      g.gain.setValueAtTime(.25, time); g.gain.exponentialRampToValueAtTime(.001, time+.14);
-      o.connect(g); g.connect(dest); o.start(time); o.stop(time+.15);
+      o.frequency.setValueAtTime(220, time);
+      o.frequency.exponentialRampToValueAtTime(38, time + 0.18);
+
+      g.gain.setValueAtTime(0.7, time); // 主節拍音量提升至 0.7
+      g.gain.exponentialRampToValueAtTime(0.001, time + 0.2);
+
+      o.connect(g); g.connect(dest);
+      o.start(time); o.stop(time + 0.22);
+
+      // 清晰點擊聲 (讓節奏正拍極度顯眼響亮)
+      const snap = audio.createOscillator(), snapG = audio.createGain();
+      snap.type = "triangle";
+      snap.frequency.setValueAtTime(1200, time);
+      snap.frequency.exponentialRampToValueAtTime(200, time + 0.03);
+      snapG.gain.setValueAtTime(0.4, time);
+      snapG.gain.exponentialRampToValueAtTime(0.001, time + 0.03);
+      snap.connect(snapG); snapG.connect(dest);
+      snap.start(time); snap.stop(time + 0.04);
     }
 
     async function perform(isRecording = false){
@@ -214,7 +250,7 @@
       const all = [...document.querySelectorAll("[data-card]")];
       const hasContent = all.some(c => c.querySelector(".lyric").value.trim() !== "");
       if(!hasContent){
-        stage(false, "請先填入歌詞", "第一句 · 第 1 拍", "先寫一拍歌詞");
+        stage(false, "請先填入歌詞", "第一句 · 第 1 拍", "先寫一拍歌詞", null);
         return;
       }
 
@@ -224,7 +260,6 @@
       const masterGain = ctx.createGain();
       masterGain.connect(ctx.destination);
 
-      // 手機跨平台 (iOS/Android) 錄音格式相容處理
       if (isRecording) {
         const streamDest = ctx.createMediaStreamDestination();
         masterGain.connect(streamDest);
@@ -269,15 +304,18 @@
         const beatNo = index % 4 + 1;
         const pattern = ratios(type);
 
-        // UI 燈號更新
+        const rhythmObj = rhythms.find(r => r[0] === type);
+        const imgSrc = rhythmObj ? rhythmObj[2] : null;
+
+        // UI 燈號與圖像文字同步更新
         timers.push(setTimeout(() => {
           if(!playing) return;
           document.querySelectorAll("[data-card]").forEach(x => x.classList.remove("active"));
           card.classList.add("active");
-          stage(true, isRecording ? "RECORDING / 錄音中" : "LIVE / 播放中", `第${["一","二","三","四"][line-1]}句 · 第 ${beatNo} 拍`, lyric || "—");
+          stage(true, isRecording ? "RECORDING / 錄音中" : "LIVE / 播放中", `第${["一","二","三","四"][line-1]}句 · 第 ${beatNo} 拍`, lyric || "—", imgSrc);
         }, Math.max(0, (when - ctx.currentTime) * 1000)));
 
-        // 樂器拍點發聲
+        // 樂器拍點發聲 (響亮鼓聲)
         beat(ctx, when, masterGain);
         pattern.forEach((ratio, p) => {
           const next = pattern[p+1] ?? 1;
@@ -285,7 +323,7 @@
           tone(ctx, when + ratio * dur, 235 + p*28, noteDuration, "bright", masterGain);
         });
 
-        // 精準中文對位朗讀
+        // 人聲朗讀
         if (lyric && !isRecording && ('speechSynthesis' in window)) {
           const syllables = [...lyric.replace(/\s+/g, "")];
           const maxLen = rhythmWordLimits[type];
@@ -312,7 +350,7 @@
       timers.push(setTimeout(() => {
         playing = false;
         document.querySelectorAll("[data-card]").forEach(x => x.classList.remove("active"));
-        stage(false, "DONE / 節拍結束", "完成", "MIC DROP");
+        stage(false, "DONE / 節拍結束", "完成", "MIC DROP", null);
         if(isRecording && mediaRecorder && mediaRecorder.state !== 'inactive') {
           mediaRecorder.stop();
         }
@@ -330,7 +368,6 @@
       downloadBtn.onclick = () => perform(true);
       stopBtn.onclick = stop;
 
-      // 支援手機觸控事件
       playBtn.addEventListener("touchstart", initOrUnlockAudio, { passive: true });
       downloadBtn.addEventListener("touchstart", initOrUnlockAudio, { passive: true });
 
