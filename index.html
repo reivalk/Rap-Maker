@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <style>
-    body { background-color: #0f172a; color: white; font-family: sans-serif; }
+    body { background-color: #0f172a; color: white; font-family: sans-serif; touch-action: manipulation; }
     .active { border-color: #14b8a6 !important; background-color: rgba(20, 184, 166, 0.2) !important; }
     .playing { background-color: #10b981; box-shadow: 0 0 10px #10b981; }
     .beat-card { padding: 1rem; border-radius: 0.5rem; border: 1px solid rgba(204, 251, 241, 0.15); background-color: rgba(0, 0, 0, 0.2); }
@@ -18,20 +18,26 @@
 </head>
 <body class="p-4 md:p-8">
   <div class="max-w-5xl mx-auto space-y-6">
-    <h1 class="text-3xl font-bold text-center text-teal-400 mb-6">自訂節拍與饒舌產生器</h1>
+    <h1 class="text-2xl md:text-3xl font-bold text-center text-teal-400 mb-6">自訂節拍與饒舌產生器</h1>
 
     <!-- 控制面板 -->
     <div class="bg-gray-800 p-4 rounded-xl flex flex-wrap gap-4 items-center justify-between shadow-lg">
-      <div class="flex items-center gap-3">
-        <button id="play-button" class="bg-teal-600 hover:bg-teal-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"><i data-lucide="play" class="w-5 h-5"></i> 實時播放 (含人聲)</button>
-        <button id="download-button" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"><i data-lucide="download" class="w-5 h-5"></i> 下載節拍檔</button>
-        <button id="stop-button" class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"><i data-lucide="square" class="w-5 h-5"></i> 停止</button>
+      <div class="flex flex-wrap items-center gap-3">
+        <button id="play-button" class="bg-teal-600 hover:bg-teal-500 active:bg-teal-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition select-none">
+          <i data-lucide="play" class="w-5 h-5"></i> 實時播放 (含人聲)
+        </button>
+        <button id="download-button" class="bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition select-none">
+          <i data-lucide="download" class="w-5 h-5"></i> 下載節拍檔
+        </button>
+        <button id="stop-button" class="bg-red-600 hover:bg-red-500 active:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition select-none">
+          <i data-lucide="square" class="w-5 h-5"></i> 停止
+        </button>
       </div>
 
       <!-- 人聲延遲校正微調器 -->
       <div class="flex items-center gap-2 bg-gray-900/60 px-3 py-1.5 rounded-lg border border-teal-500/30">
         <label for="offset-range" class="text-xs text-teal-300 font-bold whitespace-nowrap">人聲對位校正:</label>
-        <input id="offset-range" type="range" min="50" max="350" value="180" class="w-24 accent-teal-400">
+        <input id="offset-range" type="range" min="30" max="350" value="180" class="w-24 accent-teal-400">
         <span id="offset-val" class="text-xs font-mono text-teal-200 w-12">180ms</span>
       </div>
     </div>
@@ -61,17 +67,32 @@
       ["short-short-long", "短短長", "images/img_6.png"],
       ["offbeat", "後半拍", "images/img_7.png"]
     ];
-    
-    // 嚴格字數限制設定
+
     const rhythmWordLimits = {
-        "quarter": 1, "eighth": 2, "triplet": 3, "sixteenth": 4,
-        "long-short-short": 3, "short-short-long": 3, "offbeat": 1
+      "quarter": 1, "eighth": 2, "triplet": 3, "sixteenth": 4,
+      "long-short-short": 3, "short-short-long": 3, "offbeat": 1
     };
 
-    let ctx, timers = [], playing = false;
-    let mediaRecorder = null;
-    let recordedChunks = [];
-    let voiceOffsetMs = 180; // 人聲預先觸發毫秒數
+    let ctx = null, timers = [], playing = false;
+    let mediaRecorder = null, recordedChunks = [];
+    let voiceOffsetMs = 180;
+
+    // 手機端 Audio 觸控解鎖
+    function initOrUnlockAudio() {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!ctx && AC) {
+        ctx = new AC();
+      }
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.resume();
+        const dummy = new SpeechSynthesisUtterance('');
+        dummy.volume = 0.01;
+        window.speechSynthesis.speak(dummy);
+      }
+    }
 
     function cardsMarkup(line){
       return Array.from({length:4},(_,i)=>`<div class="beat-card" data-card>
@@ -87,16 +108,14 @@
     }
 
     function updateInputLimit(selectElement) {
-        const type = selectElement.value;
-        const maxLen = rhythmWordLimits[type];
-        const input = selectElement.closest("[data-card]").querySelector(".lyric");
-        
-        input.maxLength = maxLen;
-        input.placeholder = `最多 ${maxLen} 字`;
-        
-        if (input.value.length > maxLen) {
-            input.value = input.value.substring(0, maxLen);
-        }
+      const type = selectElement.value;
+      const maxLen = rhythmWordLimits[type];
+      const input = selectElement.closest("[data-card]").querySelector(".lyric");
+      input.maxLength = maxLen;
+      input.placeholder = `最多 ${maxLen} 字`;
+      if (input.value.length > maxLen) {
+        input.value = input.value.substring(0, maxLen);
+      }
     }
 
     function build(){
@@ -107,72 +126,75 @@
             </div>
             <p class="text-center text-[11px] text-teal-100 font-bold">${r[1]}</p>
         </div>`).join("");
-      
+
       document.getElementById("lines-list").innerHTML = ["第一句","第二句","第三句","第四句"].map((name,i)=>`
         <section class="rounded-2xl border border-teal-100/15 bg-gray-800 p-4 shadow-lg">
             <div class="flex justify-between mb-3"><h3 class="font-bold text-lg text-teal-400">${name}</h3><span class="text-xs text-teal-100/55">完成四拍</span></div>
             <div class="grid grid-cols-1 md:grid-cols-4 gap-3">${cardsMarkup(i)}</div>
         </section>`).join("");
-      
+
       document.querySelectorAll(".rhythm").forEach(s => {
-          s.addEventListener("change", () => {
-              const imgPath = rhythms.find(r => r[0] === s.value)[2];
-              s.closest("[data-card]").querySelector("[data-symbol]").src = imgPath;
-              updateInputLimit(s);
-          });
+        s.addEventListener("change", () => {
+          const imgPath = rhythms.find(r => r[0] === s.value)[2];
+          s.closest("[data-card]").querySelector("[data-symbol]").src = imgPath;
           updateInputLimit(s);
+        });
+        updateInputLimit(s);
       });
 
       const offsetInput = document.getElementById("offset-range");
       offsetInput.addEventListener("input", (e) => {
-          voiceOffsetMs = parseInt(e.target.value);
-          document.getElementById("offset-val").textContent = voiceOffsetMs + "ms";
+        voiceOffsetMs = parseInt(e.target.value);
+        document.getElementById("offset-val").textContent = voiceOffsetMs + "ms";
       });
     }
 
     function stop(){
-      playing = false; 
-      timers.forEach(clearTimeout); 
+      playing = false;
+      timers.forEach(clearTimeout);
       timers = [];
-      window.speechSynthesis.cancel();
-      if(mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
       document.querySelectorAll("[data-card]").forEach(c => c.classList.remove("active"));
-      if(ctx){ ctx.close().catch(()=>{}); ctx=null; }
+      if (ctx) { ctx.close().catch(()=>{}); ctx = null; }
       stage(false, "READY / 等待開始", "第一句 · 第 1 拍", "READY?");
     }
 
     function stage(on, status, line, lyric){
-        document.getElementById("status-dot").classList.toggle("playing", on);
-        document.getElementById("play-status").textContent = status;
-        document.getElementById("active-line").textContent = line;
-        document.getElementById("active-lyric").textContent = lyric;
+      document.getElementById("status-dot").classList.toggle("playing", on);
+      document.getElementById("play-status").textContent = status;
+      document.getElementById("active-line").textContent = line;
+      document.getElementById("active-lyric").textContent = lyric;
     }
 
+    // 精準細分拍比例
     function ratios(type){
-        return ({
-            quarter: [0], eighth: [0, 0.5], triplet: [0, 1/3, 2/3], sixteenth: [0, 0.25, 0.5, 0.75], 
-            "long-short-short": [0, 0.5, 0.75], "short-short-long": [0, 0.25, 0.5], offbeat: [0.5]
-        })[type] || [0];
+      return ({
+        quarter: [0],
+        eighth: [0, 0.5],
+        triplet: [0, 1/3, 2/3],
+        sixteenth: [0, 0.25, 0.5, 0.75],
+        "long-short-short": [0, 0.5, 0.75],
+        "short-short-long": [0, 0.25, 0.5],
+        offbeat: [0.5]
+      })[type] || [0];
     }
 
-    // 依節奏類型提供最適合的發音語速（防止語音唸太長拖拍）
-    function getSpeechRate(type) {
-        switch(type) {
-            case 'quarter': return 1.2;
-            case 'eighth': return 1.6;
-            case 'triplet': return 1.9;
-            case 'sixteenth': return 2.4;
-            case 'long-short-short': return 1.8;
-            case 'short-short-long': return 1.8;
-            case 'offbeat': return 1.4;
-            default: return 1.3;
-        }
+    // 依節奏與字位提供動態語速控制（解決長短短、三連音對位）
+    function getSyllableRates(type, length) {
+      if (type === 'long-short-short') return [1.2, 2.2, 2.2]; // 長、短、短
+      if (type === 'short-short-long') return [2.2, 2.2, 1.2]; // 短、短、長
+      if (type === 'triplet') return [1.8, 1.8, 1.8];           // 三連音均勻加速
+      if (type === 'sixteenth') return [2.3, 2.3, 2.3, 2.3];    // 1/4拍快速發音
+      if (type === 'eighth') return [1.5, 1.5];
+      return Array(length).fill(1.3);
     }
-    
+
     function tone(audio, time, freq, duration, voice, dest){
       const osc = audio.createOscillator(), gain = audio.createGain(), filter = audio.createBiquadFilter();
-      osc.type = voice === "low" ? "triangle" : "sawtooth"; 
-      osc.frequency.setValueAtTime(freq, time); osc.frequency.exponentialRampToValueAtTime(freq*.96, time+duration);
+      osc.type = voice === "low" ? "triangle" : "sawtooth";
+      osc.frequency.setValueAtTime(freq, time);
+      osc.frequency.exponentialRampToValueAtTime(freq*.96, time+duration);
       filter.type = "bandpass"; filter.frequency.value = voice === "low" ? 750 : 1250; filter.Q.value = 2;
       gain.gain.setValueAtTime(.0001, time); gain.gain.exponentialRampToValueAtTime(.15, time+.025); gain.gain.exponentialRampToValueAtTime(.0001, time+duration);
       osc.connect(filter); filter.connect(gain); gain.connect(dest);
@@ -180,125 +202,139 @@
     }
 
     function beat(audio, time, dest){
-        const o = audio.createOscillator(), g = audio.createGain();
-        o.frequency.setValueAtTime(130, time); o.frequency.exponentialRampToValueAtTime(48, time+.13);
-        g.gain.setValueAtTime(.25, time); g.gain.exponentialRampToValueAtTime(.001, time+.14);
-        o.connect(g); g.connect(dest); o.start(time); o.stop(time+.15);
+      const o = audio.createOscillator(), g = audio.createGain();
+      o.frequency.setValueAtTime(130, time); o.frequency.exponentialRampToValueAtTime(48, time+.13);
+      g.gain.setValueAtTime(.25, time); g.gain.exponentialRampToValueAtTime(.001, time+.14);
+      o.connect(g); g.connect(dest); o.start(time); o.stop(time+.15);
     }
 
     async function perform(isRecording = false){
+      initOrUnlockAudio();
+
       const all = [...document.querySelectorAll("[data-card]")];
       const hasContent = all.some(c => c.querySelector(".lyric").value.trim() !== "");
-      if(!hasContent){ 
-          stage(false, "請先填入歌詞", "第一句 · 第 1 拍", "先寫一拍歌詞"); 
-          return; 
+      if(!hasContent){
+        stage(false, "請先填入歌詞", "第一句 · 第 1 拍", "先寫一拍歌詞");
+        return;
       }
-      
-      stop(); 
-      
-      // 清空語音佇列並預熱引擎
-      window.speechSynthesis.cancel();
-      const warmup = new SpeechSynthesisUtterance(' ');
-      warmup.volume = 0;
-      window.speechSynthesis.speak(warmup);
 
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if(!AC) return;
-      ctx = new AC();
-      
+      stop();
+      initOrUnlockAudio();
+
       const masterGain = ctx.createGain();
       masterGain.connect(ctx.destination);
 
+      // 手機跨平台 (iOS/Android) 錄音格式相容處理
       if (isRecording) {
-          const streamDest = ctx.createMediaStreamDestination();
-          masterGain.connect(streamDest);
-          recordedChunks = [];
-          mediaRecorder = new MediaRecorder(streamDest.stream);
+        const streamDest = ctx.createMediaStreamDestination();
+        masterGain.connect(streamDest);
+        recordedChunks = [];
+        
+        let mimeType = '';
+        if (typeof MediaRecorder !== 'undefined') {
+          if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
+          else if (MediaRecorder.isTypeSupported('audio/aac')) mimeType = 'audio/aac';
+          else if (MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
+        }
+        
+        try {
+          mediaRecorder = mimeType ? new MediaRecorder(streamDest.stream, { mimeType }) : new MediaRecorder(streamDest.stream);
           mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
           mediaRecorder.onstop = () => {
-              const blob = new Blob(recordedChunks, { type: 'audio/webm' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = 'custom_beat.webm';
-              a.click();
-              URL.revokeObjectURL(url);
+            const ext = mimeType.includes('mp4') || mimeType.includes('aac') ? 'm4a' : 'webm';
+            const blob = new Blob(recordedChunks, { type: mimeType || 'audio/webm' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `custom_beat.${ext}`;
+            a.click();
+            URL.revokeObjectURL(url);
           };
           mediaRecorder.start();
+        } catch(e) {
+          alert("您的手機瀏覽器不支援直接下載音檔功能");
+        }
       }
 
       await ctx.resume();
       playing = true;
-      const bpm = 75, dur = 60/bpm;
-      const start = ctx.currentTime + 0.4; // 預留 0.4 秒供 TTS 啟動
-      
+      const bpm = 70, dur = 60/bpm;
+      const start = ctx.currentTime + 0.4;
+
       all.forEach((card, index) => {
         const type = card.querySelector(".rhythm").value;
         const lyric = card.querySelector(".lyric").value.trim();
-        const when = start + index * dur; // 樂器目標發聲時間點 (AudioContext 時間)
+        const when = start + index * dur;
         const line = Math.floor(index/4) + 1;
         const beatNo = index % 4 + 1;
         const pattern = ratios(type);
-        
-        // 畫面高亮計時器
+
+        // UI 燈號更新
         timers.push(setTimeout(() => {
-            if(!playing) return;
-            document.querySelectorAll("[data-card]").forEach(x => x.classList.remove("active"));
-            card.classList.add("active");
-            stage(true, isRecording ? "RECORDING / 錄音中" : "LIVE / 播放中", `第${["一","二","三","四"][line-1]}句 · 第 ${beatNo} 拍`, lyric || "—");
+          if(!playing) return;
+          document.querySelectorAll("[data-card]").forEach(x => x.classList.remove("active"));
+          card.classList.add("active");
+          stage(true, isRecording ? "RECORDING / 錄音中" : "LIVE / 播放中", `第${["一","二","三","四"][line-1]}句 · 第 ${beatNo} 拍`, lyric || "—");
         }, Math.max(0, (when - ctx.currentTime) * 1000)));
 
-        // 樂器節拍發聲 (100% 精準零延遲)
+        // 樂器拍點發聲
         beat(ctx, when, masterGain);
         pattern.forEach((ratio, p) => {
-            const next = pattern[p+1] ?? 1;
-            const noteDuration = Math.max(.08, (next-ratio) * dur * .75);
-            tone(ctx, when + ratio * dur, 235 + p*28, noteDuration, "bright", masterGain);
+          const next = pattern[p+1] ?? 1;
+          const noteDuration = Math.max(.08, (next-ratio) * dur * .75);
+          tone(ctx, when + ratio * dur, 235 + p*28, noteDuration, "bright", masterGain);
         });
 
-        // 人聲對位發聲 (使用負延遲預先發送指令)
-        if (lyric && !isRecording) {
-            const syllables = [...lyric.replace(/\s+/g, "")];
-            const maxLen = rhythmWordLimits[type];
-            const speechRate = getSpeechRate(type);
-            
-            for(let i = 0; i < Math.min(syllables.length, maxLen); i++) {
-                const char = syllables[i];
-                const ratio = pattern[i];
-                const targetTimeSec = when + ratio * dur; // 目標聽覺響起時間
-                
-                // 計算需要提前發送 TTS 指令的時間毫秒數
-                const triggerDelayMs = (targetTimeSec - ctx.currentTime) * 1000 - voiceOffsetMs;
-                
-                timers.push(setTimeout(() => {
-                    if(!playing) return;
-                    const msg = new SpeechSynthesisUtterance(char);
-                    msg.lang = 'zh-TW';
-                    msg.rate = speechRate;
-                    window.speechSynthesis.speak(msg);
-                }, Math.max(0, triggerDelayMs)));
-            }
+        // 精準中文對位朗讀
+        if (lyric && !isRecording && ('speechSynthesis' in window)) {
+          const syllables = [...lyric.replace(/\s+/g, "")];
+          const maxLen = rhythmWordLimits[type];
+          const rates = getSyllableRates(type, syllables.length);
+
+          for(let i = 0; i < Math.min(syllables.length, maxLen); i++) {
+            const char = syllables[i];
+            const ratio = pattern[i];
+            const targetTimeSec = when + ratio * dur;
+            const triggerDelayMs = (targetTimeSec - ctx.currentTime) * 1000 - voiceOffsetMs;
+
+            timers.push(setTimeout(() => {
+              if(!playing) return;
+              const msg = new SpeechSynthesisUtterance(char);
+              msg.lang = 'zh-TW';
+              msg.rate = rates[i] || 1.4;
+              window.speechSynthesis.speak(msg);
+            }, Math.max(0, triggerDelayMs)));
+          }
         }
       });
-      
+
       const end = (all.length * dur + 0.6) * 1000;
       timers.push(setTimeout(() => {
-          playing = false;
-          document.querySelectorAll("[data-card]").forEach(x => x.classList.remove("active"));
-          stage(false, "DONE / 節拍結束", "完成", "MIC DROP");
-          if(isRecording && mediaRecorder && mediaRecorder.state !== 'inactive') {
-              mediaRecorder.stop();
-          }
-          if(ctx){ ctx.close().catch(()=>{}); ctx=null; }
+        playing = false;
+        document.querySelectorAll("[data-card]").forEach(x => x.classList.remove("active"));
+        stage(false, "DONE / 節拍結束", "完成", "MIC DROP");
+        if(isRecording && mediaRecorder && mediaRecorder.state !== 'inactive') {
+          mediaRecorder.stop();
+        }
+        if(ctx){ ctx.close().catch(()=>{}); ctx=null; }
       }, end));
     }
-    
+
     document.addEventListener("DOMContentLoaded", () => {
-        build();
-        document.getElementById("play-button").onclick = () => perform(false);
-        document.getElementById("download-button").onclick = () => perform(true);
-        document.getElementById("stop-button").onclick = stop;
-        lucide.createIcons();
+      build();
+      const playBtn = document.getElementById("play-button");
+      const downloadBtn = document.getElementById("download-button");
+      const stopBtn = document.getElementById("stop-button");
+
+      playBtn.onclick = () => perform(false);
+      downloadBtn.onclick = () => perform(true);
+      stopBtn.onclick = stop;
+
+      // 支援手機觸控事件
+      playBtn.addEventListener("touchstart", initOrUnlockAudio, { passive: true });
+      downloadBtn.addEventListener("touchstart", initOrUnlockAudio, { passive: true });
+
+      lucide.createIcons();
     });
   </script>
 </body>
