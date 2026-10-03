@@ -7,51 +7,45 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <style>
-    body { background-color: #0f172a; color: white; font-family: sans-serif; touch-action: manipulation; }
-    .active { border-color: #14b8a6 !important; background-color: rgba(20, 184, 166, 0.2) !important; }
+    body { background-color: #fefce8; color: #451a03; font-family: sans-serif; touch-action: manipulation; }
+    .active { border-color: #d97706 !important; background-color: #fef3c7 !important; box-shadow: 0 0 12px rgba(217, 119, 6, 0.3); }
     .playing { background-color: #10b981; box-shadow: 0 0 10px #10b981; }
-    .beat-card { padding: 1rem; border-radius: 0.5rem; border: 1px solid rgba(204, 251, 241, 0.15); background-color: rgba(0, 0, 0, 0.2); }
-    .field { width: 100%; padding: 0.5rem; border-radius: 0.25rem; background: #1e293b; color: white; border: 1px solid #334155; outline: none; }
-    .field:focus { border-color: #14b8a6; }
-    .rhythm-img { height: 40px; margin: 0 auto; object-fit: contain; filter: invert(1); }
+    .beat-card { padding: 1rem; border-radius: 0.5rem; border: 1px solid #fde68a; background-color: #ffffff; }
+    .field { width: 100%; padding: 0.5rem; border-radius: 0.25rem; background: #fffbebf0; color: #451a03; border: 1px solid #fcd34d; outline: none; }
+    .field:focus { border-color: #d97706; }
+    .rhythm-img { height: 40px; margin: 0 auto; object-fit: contain; }
   </style>
 </head>
 <body class="p-4 md:p-8">
   <div class="max-w-5xl mx-auto space-y-6">
-    <h1 class="text-2xl md:text-3xl font-bold text-center text-teal-400 mb-6">自訂節拍與饒舌產生器</h1>
+    <h1 class="text-2xl md:text-3xl font-bold text-center text-amber-800 mb-6">自訂節拍與饒舌產生器</h1>
 
     <!-- 控制面板 -->
-    <div class="bg-gray-800 p-4 rounded-xl flex flex-wrap gap-4 items-center justify-between shadow-lg">
+    <div class="bg-amber-100/90 border border-amber-300 p-4 rounded-xl flex flex-wrap gap-4 items-center justify-between shadow-md">
       <div class="flex flex-wrap items-center gap-3">
-        <button id="play-button" class="bg-teal-600 hover:bg-teal-500 active:bg-teal-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition select-none">
-          <i data-lucide="play" class="w-5 h-5"></i> 實時播放 (含人聲)
+        <button id="play-button" class="bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 font-bold transition select-none shadow">
+          <i data-lucide="play" class="w-5 h-5"></i> 實時播放
         </button>
-        <button id="download-button" class="bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition select-none">
+        <button id="download-button" class="bg-teal-600 hover:bg-teal-500 active:bg-teal-700 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 font-bold transition select-none shadow">
           <i data-lucide="download" class="w-5 h-5"></i> 下載節拍檔
         </button>
-        <button id="stop-button" class="bg-red-600 hover:bg-red-500 active:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition select-none">
+        <button id="stop-button" class="bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 font-bold transition select-none shadow">
           <i data-lucide="square" class="w-5 h-5"></i> 停止
         </button>
       </div>
-
-      <!-- 人聲延遲校正微調器 -->
-      <div class="flex items-center gap-2 bg-gray-900/60 px-3 py-1.5 rounded-lg border border-teal-500/30">
-        <label for="offset-range" class="text-xs text-teal-300 font-bold whitespace-nowrap">人聲對位校正:</label>
-        <input id="offset-range" type="range" min="30" max="350" value="180" class="w-24 accent-teal-400">
-        <span id="offset-val" class="text-xs font-mono text-teal-200 w-12">180ms</span>
-      </div>
+      <div class="text-xs text-amber-800 font-medium">※ 純樂器節拍模式（不含語音）</div>
     </div>
 
-    <!-- 狀態面板（更新：支援同步顯示節奏圖片） -->
-    <div class="bg-gray-800 p-4 rounded-xl flex items-center gap-4 shadow-lg">
-      <div id="status-dot" class="w-4 h-4 rounded-full bg-gray-500 transition-colors"></div>
-      <div id="play-status" class="font-bold text-teal-300">READY / 等待開始</div>
-      <div id="active-line" class="text-gray-400 text-sm">第一句 · 第 1 拍</div>
+    <!-- 狀態面板 (亮色系 + 同步顯示文字與圖片) -->
+    <div class="bg-amber-100/90 border border-amber-300 p-4 rounded-xl flex items-center gap-4 shadow-md">
+      <div id="status-dot" class="w-4 h-4 rounded-full bg-amber-400 transition-colors"></div>
+      <div id="play-status" class="font-bold text-amber-900">READY / 等待開始</div>
+      <div id="active-line" class="text-amber-700 text-sm">第一句 · 第 1 拍</div>
       
-      <!-- 動態節奏圖片與歌詞 -->
-      <div class="ml-auto flex items-center gap-3">
-        <img id="active-img" class="h-8 w-auto object-contain filter invert hidden" alt="當前節奏">
-        <div id="active-lyric" class="text-white font-mono text-lg font-bold">READY?</div>
+      <!-- 動態節奏圖片與歌詞文字 -->
+      <div class="ml-auto flex items-center gap-3 bg-white px-4 py-1.5 rounded-lg border border-amber-200 min-w-[140px] justify-end">
+        <img id="active-img" class="h-8 w-auto object-contain hidden" alt="當前節奏">
+        <div id="active-lyric" class="text-amber-950 font-mono text-xl font-bold">READY?</div>
       </div>
     </div>
 
@@ -80,9 +74,7 @@
 
     let ctx = null, timers = [], playing = false;
     let mediaRecorder = null, recordedChunks = [];
-    let voiceOffsetMs = 180;
 
-    // 手機端 Audio 觸控解鎖
     function initOrUnlockAudio() {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!ctx && AC) {
@@ -91,22 +83,16 @@
       if (ctx && ctx.state === 'suspended') {
         ctx.resume();
       }
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.resume();
-        const dummy = new SpeechSynthesisUtterance('');
-        dummy.volume = 0.01;
-        window.speechSynthesis.speak(dummy);
-      }
     }
 
     function cardsMarkup(line){
       return Array.from({length:4},(_,i)=>`<div class="beat-card" data-card>
-        <div class="flex justify-between mb-2"><span class="font-bold text-teal-300">${i+1}</span><span class="text-[10px] text-teal-100/45">BEAT</span></div>
+        <div class="flex justify-between mb-2"><span class="font-bold text-amber-800">${i+1}</span><span class="text-[10px] text-amber-600 font-semibold">BEAT</span></div>
         <div class="mb-4 text-center h-10 flex items-center justify-center">
             <img data-symbol src="images/img_1.png" class="rhythm-img" alt="音符">
         </div>
         <label class="sr-only" for="r${line}-${i}">節奏</label>
-        <select id="r${line}-${i}" class="field rhythm mb-2 text-sm">${rhythms.map(r=>`<option value="${r[0]}">${r[1]}</option>`).join("")}</select>
+        <select id="r${line}-${i}" class="field rhythm mb-2 text-sm font-medium">${rhythms.map(r=>`<option value="${r[0]}">${r[1]}</option>`).join("")}</select>
         <label class="sr-only" for="t${line}-${i}">歌詞</label>
         <input id="t${line}-${i}" class="field lyric text-center font-bold text-lg" type="text" placeholder="最多 1 字">
       </div>`).join("");
@@ -125,16 +111,16 @@
 
     function build(){
       document.getElementById("guide-list").innerHTML = rhythms.map(r=>`
-        <div class="rounded-xl border border-teal-100/15 bg-gray-800 p-2">
+        <div class="rounded-xl border border-amber-200 bg-amber-100/70 p-2 text-center">
             <div class="h-10 flex items-center justify-center mb-1">
-                <img src="${r[2]}" alt="${r[1]}" class="rhythm-img" onerror="this.outerHTML='<span class=\\'text-xs text-red-400\\'>圖片遺失</span>'">
+                <img src="${r[2]}" alt="${r[1]}" class="rhythm-img" onerror="this.outerHTML='<span class=\\'text-xs text-red-500\\'>圖片遺失</span>'">
             </div>
-            <p class="text-center text-[11px] text-teal-100 font-bold">${r[1]}</p>
+            <p class="text-center text-[11px] text-amber-900 font-bold">${r[1]}</p>
         </div>`).join("");
 
       document.getElementById("lines-list").innerHTML = ["第一句","第二句","第三句","第四句"].map((name,i)=>`
-        <section class="rounded-2xl border border-teal-100/15 bg-gray-800 p-4 shadow-lg">
-            <div class="flex justify-between mb-3"><h3 class="font-bold text-lg text-teal-400">${name}</h3><span class="text-xs text-teal-100/55">完成四拍</span></div>
+        <section class="rounded-2xl border border-amber-300 bg-amber-100/80 p-4 shadow-md">
+            <div class="flex justify-between mb-3"><h3 class="font-bold text-lg text-amber-900">${name}</h3><span class="text-xs text-amber-700">完成四拍</span></div>
             <div class="grid grid-cols-1 md:grid-cols-4 gap-3">${cardsMarkup(i)}</div>
         </section>`).join("");
 
@@ -146,19 +132,12 @@
         });
         updateInputLimit(s);
       });
-
-      const offsetInput = document.getElementById("offset-range");
-      offsetInput.addEventListener("input", (e) => {
-        voiceOffsetMs = parseInt(e.target.value);
-        document.getElementById("offset-val").textContent = voiceOffsetMs + "ms";
-      });
     }
 
     function stop(){
       playing = false;
       timers.forEach(clearTimeout);
       timers = [];
-      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
       if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
       document.querySelectorAll("[data-card]").forEach(c => c.classList.remove("active"));
       if (ctx) { ctx.close().catch(()=>{}); ctx = null; }
@@ -192,56 +171,73 @@
       })[type] || [0];
     }
 
-    function getSyllableRates(type, length) {
-      if (type === 'long-short-short') return [1.2, 2.2, 2.2];
-      if (type === 'short-short-long') return [2.2, 2.2, 1.2];
-      if (type === 'triplet') return [1.8, 1.8, 1.8];
-      if (type === 'sixteenth') return [2.3, 2.3, 2.3, 2.3];
-      if (type === 'eighth') return [1.5, 1.5];
-      return Array(length).fill(1.3);
-    }
-
-    // 響亮清晰的細分節拍聲
-    function tone(audio, time, freq, duration, voice, dest){
-      const osc = audio.createOscillator(), gain = audio.createGain(), filter = audio.createBiquadFilter();
-      osc.type = "square"; // 方波：讓高頻更清晰突出
-      osc.frequency.setValueAtTime(freq * 1.2, time);
-      osc.frequency.exponentialRampToValueAtTime(freq * 0.9, time + duration);
-
-      filter.type = "highshelf";
-      filter.frequency.value = 1000;
-      filter.gain.value = 6; // 增加高頻清晰度
-
-      gain.gain.setValueAtTime(0.001, time);
-      gain.gain.exponentialRampToValueAtTime(0.4, time + 0.015); // 音量提升至 0.4
-      gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
-
-      osc.connect(filter); filter.connect(gain); gain.connect(dest);
-      osc.start(time); osc.stop(time + duration + 0.05);
-    }
-
-    // 重響且扎實的主節拍聲 (Kick + High Click)
-    function beat(audio, time, dest){
-      // 重打低音鼓
+    // 重低音大鼓 (Kick)
+    function kick(audio, time, dest){
       const o = audio.createOscillator(), g = audio.createGain();
-      o.frequency.setValueAtTime(220, time);
-      o.frequency.exponentialRampToValueAtTime(38, time + 0.18);
+      o.frequency.setValueAtTime(150, time);
+      o.frequency.exponentialRampToValueAtTime(35, time + 0.15);
 
-      g.gain.setValueAtTime(0.7, time); // 主節拍音量提升至 0.7
-      g.gain.exponentialRampToValueAtTime(0.001, time + 0.2);
+      g.gain.setValueAtTime(0.8, time);
+      g.gain.exponentialRampToValueAtTime(0.001, time + 0.16);
 
       o.connect(g); g.connect(dest);
-      o.start(time); o.stop(time + 0.22);
+      o.start(time); o.stop(time + 0.18);
+    }
 
-      // 清晰點擊聲 (讓節奏正拍極度顯眼響亮)
-      const snap = audio.createOscillator(), snapG = audio.createGain();
-      snap.type = "triangle";
-      snap.frequency.setValueAtTime(1200, time);
-      snap.frequency.exponentialRampToValueAtTime(200, time + 0.03);
-      snapG.gain.setValueAtTime(0.4, time);
-      snapG.gain.exponentialRampToValueAtTime(0.001, time + 0.03);
-      snap.connect(snapG); snapG.connect(dest);
-      snap.start(time); snap.stop(time + 0.04);
+    // 合成小鼓音效 (Snare Drum - 替代原高音 Click)
+    function snare(audio, time, dest){
+      // 1. 白雜音 (響弦聲)
+      const bufferSize = audio.sampleRate * 0.15;
+      const buffer = audio.createBuffer(1, bufferSize, audio.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1;
+      }
+
+      const noise = audio.createBufferSource();
+      noise.buffer = buffer;
+
+      const filter = audio.createBiquadFilter();
+      filter.type = "highpass";
+      filter.frequency.value = 1000;
+
+      const noiseGain = audio.createGain();
+      noiseGain.gain.setValueAtTime(0.4, time);
+      noiseGain.gain.exponentialRampToValueAtTime(0.01, time + 0.12);
+
+      noise.connect(filter);
+      filter.connect(noiseGain);
+      noiseGain.connect(dest);
+
+      // 2. 鼓腔擊打聲
+      const osc = audio.createOscillator();
+      const oscGain = audio.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(180, time);
+      osc.frequency.exponentialRampToValueAtTime(80, time + 0.08);
+
+      oscGain.gain.setValueAtTime(0.5, time);
+      oscGain.gain.exponentialRampToValueAtTime(0.01, time + 0.09);
+
+      osc.connect(oscGain);
+      oscGain.connect(dest);
+
+      osc.start(time);
+      osc.stop(time + 0.12);
+      noise.start(time);
+      noise.stop(time + 0.15);
+    }
+
+    // 細分拍聲音
+    function tone(audio, time, freq, duration, dest){
+      const osc = audio.createOscillator(), gain = audio.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, time);
+      gain.gain.setValueAtTime(0.3, time);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+
+      osc.connect(gain); gain.connect(dest);
+      osc.start(time); osc.stop(time + duration + 0.02);
     }
 
     async function perform(isRecording = false){
@@ -294,7 +290,7 @@
       await ctx.resume();
       playing = true;
       const bpm = 70, dur = 60/bpm;
-      const start = ctx.currentTime + 0.4;
+      const start = ctx.currentTime + 0.1;
 
       all.forEach((card, index) => {
         const type = card.querySelector(".rhythm").value;
@@ -307,7 +303,7 @@
         const rhythmObj = rhythms.find(r => r[0] === type);
         const imgSrc = rhythmObj ? rhythmObj[2] : null;
 
-        // UI 燈號與圖像文字同步更新
+        // LIVE 播放狀態：同步顯示文字與節奏圖片
         timers.push(setTimeout(() => {
           if(!playing) return;
           document.querySelectorAll("[data-card]").forEach(x => x.classList.remove("active"));
@@ -315,38 +311,23 @@
           stage(true, isRecording ? "RECORDING / 錄音中" : "LIVE / 播放中", `第${["一","二","三","四"][line-1]}句 · 第 ${beatNo} 拍`, lyric || "—", imgSrc);
         }, Math.max(0, (when - ctx.currentTime) * 1000)));
 
-        // 樂器拍點發聲 (響亮鼓聲)
-        beat(ctx, when, masterGain);
-        pattern.forEach((ratio, p) => {
-          const next = pattern[p+1] ?? 1;
-          const noteDuration = Math.max(.08, (next-ratio) * dur * .75);
-          tone(ctx, when + ratio * dur, 235 + p*28, noteDuration, "bright", masterGain);
-        });
-
-        // 人聲朗讀
-        if (lyric && !isRecording && ('speechSynthesis' in window)) {
-          const syllables = [...lyric.replace(/\s+/g, "")];
-          const maxLen = rhythmWordLimits[type];
-          const rates = getSyllableRates(type, syllables.length);
-
-          for(let i = 0; i < Math.min(syllables.length, maxLen); i++) {
-            const char = syllables[i];
-            const ratio = pattern[i];
-            const targetTimeSec = when + ratio * dur;
-            const triggerDelayMs = (targetTimeSec - ctx.currentTime) * 1000 - voiceOffsetMs;
-
-            timers.push(setTimeout(() => {
-              if(!playing) return;
-              const msg = new SpeechSynthesisUtterance(char);
-              msg.lang = 'zh-TW';
-              msg.rate = rates[i] || 1.4;
-              window.speechSynthesis.speak(msg);
-            }, Math.max(0, triggerDelayMs)));
-          }
+        // 節拍發聲：1、3拍擊打大鼓，2、4拍擊打小鼓 (Snare)
+        if (beatNo === 1 || beatNo === 3) {
+          kick(ctx, when, masterGain);
+        } else {
+          snare(ctx, when, masterGain);
         }
+
+        // 細分節拍發聲
+        pattern.forEach((ratio, p) => {
+          if (ratio === 0) return;
+          const next = pattern[p+1] ?? 1;
+          const noteDuration = Math.max(.06, (next-ratio) * dur * .6);
+          tone(ctx, when + ratio * dur, 320 + p*40, noteDuration, masterGain);
+        });
       });
 
-      const end = (all.length * dur + 0.6) * 1000;
+      const end = (all.length * dur + 0.4) * 1000;
       timers.push(setTimeout(() => {
         playing = false;
         document.querySelectorAll("[data-card]").forEach(x => x.classList.remove("active"));
