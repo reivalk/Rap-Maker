@@ -33,14 +33,14 @@
       <button onclick="clearAll()" class="px-2.5 py-1 bg-gray-200 active:bg-gray-300 text-gray-700 rounded-full text-xs sm:text-sm font-bold transition">🗑️ 清空</button>
     </div>
 
-    <!-- 控制面板 1: 核心播放 (手機端按鈕自動縮放) -->
+    <!-- 控制面板 1: 核心播放 -->
     <div class="bg-amber-100/90 border border-amber-300 p-3 sm:p-4 rounded-xl flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between shadow-sm">
       <div class="grid grid-cols-3 gap-2 sm:flex sm:items-center sm:gap-3">
         <button id="play-button" class="bg-amber-600 active:bg-amber-700 text-white px-3 sm:px-5 py-2.5 rounded-lg flex items-center justify-center gap-1.5 font-bold text-sm sm:text-base select-none shadow">
           <i data-lucide="play" class="w-4 h-4 sm:w-5 sm:h-5"></i> 播放
         </button>
         <button id="download-button" class="bg-teal-600 active:bg-teal-700 text-white px-3 sm:px-5 py-2.5 rounded-lg flex items-center justify-center gap-1.5 font-bold text-sm sm:text-base select-none shadow">
-          <i data-lucide="download" class="w-4 h-4 sm:w-5 sm:h-5"></i> 下載
+          <i data-lucide="download" class="w-4 h-4 sm:w-5 sm:h-5"></i> 下載 M4A
         </button>
         <button id="stop-button" class="bg-rose-600 active:bg-rose-700 text-white px-3 sm:px-5 py-2.5 rounded-lg flex items-center justify-center gap-1.5 font-bold text-sm sm:text-base select-none shadow">
           <i data-lucide="square" class="w-4 h-4 sm:w-5 sm:h-5"></i> 停止
@@ -70,7 +70,7 @@
       </label>
     </div>
 
-    <!-- 狀態面板（手機與桌面跨螢幕優化） -->
+    <!-- 狀態面板 -->
     <div class="bg-amber-100/95 border border-amber-300 p-3 sm:p-4 rounded-xl flex items-center justify-between gap-2 shadow-md sticky top-2 z-20 backdrop-blur-sm">
       <div class="flex items-center gap-2 sm:gap-3 min-w-0">
         <div id="status-dot" class="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-amber-400 transition-colors shrink-0"></div>
@@ -78,14 +78,13 @@
         <div id="active-line" class="text-amber-700 text-xs hidden sm:block">--</div>
       </div>
       
-      <!-- 當前顯示（文字 + 圖片） -->
       <div class="flex items-center gap-2 bg-white px-3 py-1 rounded-lg border border-amber-200 shadow-sm shrink-0">
         <img id="active-img" class="h-6 sm:h-8 w-auto object-contain hidden" alt="節奏圖">
         <div id="active-lyric" class="text-amber-950 font-mono text-base sm:text-xl font-bold">READY?</div>
       </div>
     </div>
 
-    <!-- 節拍參考區 (手機排版優化) -->
+    <!-- 節拍參考區 -->
     <div class="grid grid-cols-4 sm:grid-cols-7 gap-1.5 sm:gap-2" id="guide-list"></div>
 
     <!-- 歌詞編輯區 -->
@@ -131,10 +130,31 @@
           <p class="text-center text-[10px] sm:text-xs text-amber-900 font-bold truncate">${r[1]}</p>
       </div>`).join("");
 
-    function initOrUnlockAudio() {
+    // 🔥 解鎖 iOS 聲音與突破靜音模式關鍵函式
+    function unlockIOSAudio() {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!ctx && AC) ctx = new AC();
       if (ctx && ctx.state === 'suspended') ctx.resume();
+      
+      // 播放空白 HTML5 音訊檔，強迫 iOS Safari 將聲音類別切換至「媒體播放 (Playback)」，無視靜音鍵
+      const silentAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==');
+      silentAudio.play().then(() => silentAudio.pause()).catch(() => {});
+    }
+
+    // 偵測裝置支援的音訊格式（優先選擇 M4A / AAC / MP4）
+    function getSupportedAudioFormat() {
+      if (typeof MediaRecorder === 'undefined') return { mimeType: '', ext: 'm4a' };
+      const types = [
+        { mime: 'audio/mp4;codecs=mp4a.40.2', ext: 'm4a' },
+        { mime: 'audio/mp4', ext: 'm4a' },
+        { mime: 'audio/aac', ext: 'm4a' },
+        { mime: 'audio/webm;codecs=opus', ext: 'webm' },
+        { mime: 'audio/webm', ext: 'webm' }
+      ];
+      for (let t of types) {
+        if (MediaRecorder.isTypeSupported(t.mime)) return t;
+      }
+      return { mimeType: '', ext: 'm4a' };
     }
 
     function attachCardEvents(card) {
@@ -156,7 +176,6 @@
       updateLimit();
     }
 
-    // 手機版改為 2x2 網格（grid-cols-2 sm:grid-cols-4）
     function addLine(data = null) {
       lineCounter++;
       const currentLineId = lineCounter;
@@ -328,10 +347,10 @@
     }
 
     async function perform(isRecording = false){
-      initOrUnlockAudio();
+      unlockIOSAudio();
       const all = [...document.querySelectorAll("[data-card]")];
       if(all.length === 0){ alert("請至少新增一句節拍！"); return; }
-      stop(); initOrUnlockAudio();
+      stop(); unlockIOSAudio();
 
       const masterGain = ctx.createGain(); masterGain.connect(ctx.destination);
 
@@ -339,18 +358,25 @@
         const streamDest = ctx.createMediaStreamDestination();
         masterGain.connect(streamDest);
         recordedChunks = [];
-        let mimeType = (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('audio/webm')) ? 'audio/webm' : '';
+        
+        const audioFormat = getSupportedAudioFormat();
         try {
-          mediaRecorder = mimeType ? new MediaRecorder(streamDest.stream, { mimeType }) : new MediaRecorder(streamDest.stream);
+          mediaRecorder = audioFormat.mimeType 
+            ? new MediaRecorder(streamDest.stream, { mimeType: audioFormat.mimeType }) 
+            : new MediaRecorder(streamDest.stream);
+
           mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
           mediaRecorder.onstop = () => {
-            const blob = new Blob(recordedChunks, { type: mimeType || 'audio/webm' });
+            const blob = new Blob(recordedChunks, { type: audioFormat.mimeType || 'audio/mp4' });
             const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = `custom_beat.webm`; a.click();
+            const a = document.createElement('a'); 
+            a.href = url; 
+            a.download = `custom_beat.${audioFormat.ext}`; 
+            a.click();
             URL.revokeObjectURL(url);
           };
           mediaRecorder.start();
-        } catch(e) { alert("手機瀏覽器不支援錄音下載功能"); }
+        } catch(e) { alert("您的手機瀏覽器不支援錄音下載功能"); }
       }
 
       await ctx.resume();
@@ -423,7 +449,8 @@
       document.getElementById("stop-button").onclick = stop;
 
       ['play-button', 'download-button'].forEach(id => {
-        document.getElementById(id).addEventListener("touchstart", initOrUnlockAudio, { passive: true });
+        document.getElementById(id).addEventListener("touchstart", unlockIOSAudio, { passive: true });
+        document.getElementById(id).addEventListener("click", unlockIOSAudio);
       });
       lucide.createIcons();
     });
